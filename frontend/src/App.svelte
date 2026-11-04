@@ -1,95 +1,210 @@
 <script>
-  import { onMount } from 'svelte';
-  import { fetchAssets, deleteAsset } from './lib/api.js';
+  import { onMount } from 'svelte'
+  import { getUser, clearAuth } from './lib/api.js'
+  import { formatDate } from './lib/utils.js'
 
-  let assets = [];
-  let loading = true;
-  let error = '';
+  import Login from './lib/pages/Login.svelte'
+  import Dashboard from './lib/pages/Dashboard.svelte'
+  import Assets from './lib/pages/Assets.svelte'
+  import AssetDetail from './lib/pages/AssetDetail.svelte'
+  import AssetForm from './lib/pages/AssetForm.svelte'
+  import WorkOrders from './lib/pages/WorkOrders.svelte'
+  import MaintenanceReport from './lib/pages/MaintenanceReport.svelte'
+  import Users from './lib/pages/Users.svelte'
 
-  async function loadData() {
-    loading = true;
-    try {
-      assets = await fetchAssets();
-    } catch (err) {
-      error = err.message;
-    } finally {
-      loading = false;
+  let currentUser = $state(getUser())
+  let currentHash = $state(window.location.hash || '#/dashboard')
+
+  function handleHashChange() {
+    currentHash = window.location.hash || '#/dashboard'
+    // If not logged in and not on login, redirect to login
+    if (!currentUser && currentHash !== '#/login') {
+      window.location.hash = '#/login'
     }
   }
 
-  async function handleDelete(id) {
-    if (confirm('Apakah Anda yakin ingin menghapus mesin ini?')) {
-      await deleteAsset(id);
-      loadData();
-    }
+  function handleLoginSuccess(user) {
+    currentUser = user
+    window.location.hash = '#/dashboard'
+  }
+
+  function handleLogout() {
+    clearAuth()
+    currentUser = null
+    window.location.hash = '#/login'
   }
 
   onMount(() => {
-    loadData();
-  });
+    window.addEventListener('hashchange', handleHashChange)
+    if (!currentUser && currentHash !== '#/login') {
+      window.location.hash = '#/login'
+    }
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange)
+    }
+  })
+
+  // Route parser
+  let route = $derived.by(() => {
+    const raw = currentHash.replace(/^#\/?/, '')
+    const parts = raw.split('/').filter(Boolean)
+
+    if (parts.length === 0 || parts[0] === 'dashboard') {
+      return { page: 'dashboard' }
+    }
+    if (parts[0] === 'login') {
+      return { page: 'login' }
+    }
+    if (parts[0] === 'assets') {
+      if (parts[1] === 'new') return { page: 'asset_new' }
+      if (parts[1] && parts[2] === 'edit') return { page: 'asset_edit', id: parts[1] }
+      if (parts[1]) return { page: 'asset_detail', id: parts[1] }
+      return { page: 'assets' }
+    }
+    if (parts[0] === 'work-orders') {
+      if (parts[1] && parts[2] === 'report') return { page: 'report', ticketId: parts[1] }
+      return { page: 'work_orders' }
+    }
+    if (parts[0] === 'users') {
+      return { page: 'users' }
+    }
+    return { page: 'dashboard' }
+  })
+
+  let breadcrumb = $derived.by(() => {
+    switch (route.page) {
+      case 'dashboard':
+        return 'Dashboard'
+      case 'assets':
+        return currentUser?.role === 'Manager' ? 'Master Aset' : 'Aset Mesin'
+      case 'asset_new':
+        return 'Master Aset / Tambah aset'
+      case 'asset_detail':
+        return 'Aset Mesin / Detail'
+      case 'asset_edit':
+        return 'Master Aset / Edit aset'
+      case 'work_orders':
+        return 'Work Order'
+      case 'report':
+        return 'Tugas saya / Laporan'
+      case 'users':
+        return 'Pengguna'
+      default:
+        return 'Dashboard'
+    }
+  })
+
+  let todayStr = $derived(
+    new Date().toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })
+  )
 </script>
 
-<main class="container">
-  <header>
-    <h1>⚙️ Smart Maintenance - Master Asset</h1>
-    <button class="btn-primary" on:click={loadData}>Refresh Data</button>
-  </header>
+{#if !currentUser || route.page === 'login'}
+  <Login onLoginSuccess={handleLoginSuccess} />
+{:else}
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/dashboard">
+        <span class="brand-mark">SM</span>
+        <span>SMART<span class="brand-light">Maintenance</span></span>
+      </a>
 
-  {#if loading}
-    <p class="status">Memuat data dari database MySQL...</p>
-  {:else if error}
-    <p class="status error">Error: {error}</p>
-  {:else}
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Kode Asset</th>
-          <th>Nama Mesin</th>
-          <th>Merk / Model</th>
-          <th>Lokasi</th>
-          <th>Kondisi</th>
-          <th>Status</th>
-          <th>Aksi</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each assets as item}
-          <tr>
-            <td><strong>{item.kode_asset}</strong></td>
-            <td>{item.nama_mesin}</td>
-            <td>{item.merk || '-'} {item.tipe_model ? `(${item.tipe_model})` : ''}</td>
-            <td>{item.lokasi || '-'}</td>
-            <td>
-              <span class="badge {item.kondisi === 'Baik' ? 'green' : 'red'}">
-                {item.kondisi}
-              </span>
-            </td>
-            <td>
-              <span class="badge {item.status === 'Operasional' ? 'blue' : 'yellow'}">
-                {item.status}
-              </span>
-            </td>
-            <td>
-              <button class="btn-danger" on:click={() => handleDelete(item.id_asset)}>Hapus</button>
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  {/if}
-</main>
+      <div class="sidebar-label">MENU UTAMA</div>
 
-<style>
-  .container { max-width: 1100px; margin: 2rem auto; font-family: system-ui, sans-serif; }
-  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-  .data-table { width: 100%; border-collapse: collapse; text-align: left; }
-  .data-table th, .data-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
-  .data-table th { background-color: #f8fafc; color: #475569; }
-  .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
-  .green { background: #dcfce7; color: #166534; }
-  .red { background: #fee2e2; color: #991b1b; }
-  .blue { background: #dbeafe; color: #1e40af; }
-  .yellow { background: #fef9c3; color: #854d0e; }
-  .btn-primary { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-  .btn-danger { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-</style>
+      <nav class="main-nav">
+        <a
+          href="#/dashboard"
+          class={route.page === 'dashboard' ? 'active' : ''}
+        >
+          <span class="nav-icon">▦</span> Dashboard
+        </a>
+
+        <a
+          href="#/assets"
+          class={['assets', 'asset_detail', 'asset_new', 'asset_edit'].includes(route.page)
+            ? 'active'
+            : ''}
+        >
+          <span class="nav-icon">⬡</span>
+          {currentUser?.role === 'Manager' ? 'Master Aset' : 'Aset Mesin'}
+        </a>
+
+        {#if currentUser?.role === 'Manager'}
+          <a
+            href="#/work-orders"
+            class={route.page === 'work_orders' ? 'active' : ''}
+          >
+            <span class="nav-icon">▤</span> Work Order
+          </a>
+
+          <a
+            href="#/users"
+            class={route.page === 'users' ? 'active' : ''}
+          >
+            <span class="nav-icon">♙</span> Pengguna
+          </a>
+        {/if}
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="help-card">
+          <span class="help-dot"></span>
+          <strong>Sistem siap digunakan</strong>
+          <span>Data maintenance tersimpan lokal.</span>
+        </div>
+
+        <div class="profile">
+          <div class="avatar">
+            {(currentUser?.full_name || 'U').charAt(0).toUpperCase()}
+          </div>
+          <div class="profile-info">
+            <strong>{currentUser?.full_name}</strong>
+            <span>{currentUser?.role}</span>
+          </div>
+          <button
+            class="icon-button logout-button"
+            type="button"
+            title="Keluar"
+            aria-label="Keluar"
+            onclick={handleLogout}
+          >
+            ↪
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="breadcrumb">
+          Workspace <span>/</span> {breadcrumb}
+        </div>
+        <div class="topbar-date">{todayStr}</div>
+      </header>
+
+      <section class="page-content">
+        {#if route.page === 'dashboard'}
+          <Dashboard {currentUser} />
+        {:else if route.page === 'assets'}
+          <Assets {currentUser} />
+        {:else if route.page === 'asset_detail'}
+          <AssetDetail assetId={route.id} {currentUser} />
+        {:else if route.page === 'asset_new'}
+          <AssetForm {currentUser} />
+        {:else if route.page === 'asset_edit'}
+          <AssetForm assetId={route.id} {currentUser} />
+        {:else if route.page === 'work_orders'}
+          <WorkOrders {currentUser} />
+        {:else if route.page === 'report'}
+          <MaintenanceReport ticketId={route.ticketId} {currentUser} />
+        {:else if route.page === 'users'}
+          <Users />
+        {/if}
+      </section>
+    </main>
+  </div>
+{/if}

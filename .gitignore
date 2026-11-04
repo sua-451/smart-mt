@@ -9,6 +9,7 @@ backend/tmp/
 *.dylib
 backend/smart-mt-backend
 backend/main
+legacy-templates
 
 # ==========================================
 # 2. Frontend (Node.js & Svelte)
